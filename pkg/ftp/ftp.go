@@ -2,7 +2,6 @@ package ftp
 
 import (
 	"fmt"
-	"io"
 	"net"
 
 	"github.com/bigbr41n/GFTP-client/pkg/command"
@@ -43,26 +42,6 @@ func (c *FTPClient) Dial() (net.Conn, error) {
 
 // HandleConnection reads responses from the FTP server
 func (c *FTPClient) HandleConnection(conn net.Conn) {
-	defer conn.Close()
-
-	// Buffer to read responses
-	buffer := make([]byte, 1024)
-
-	for {
-		// Read server response
-		_ , err := conn.Read(buffer)
-
-		// Handle read errors
-		if err != nil {
-			if err == io.EOF {
-				fmt.Println("Connection closed by the server")
-				return
-			}
-			fmt.Printf("Error reading from server: %v\n", err)
-			return
-		}
-
-		// Print the server response
-		go command.NewCommandsHandler(conn)
-	}
+	handler := command.NewCommandsHandler(conn)
+	handler.HandleCommands()
 }
