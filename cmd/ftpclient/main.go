@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"os"
+
+	"github.com/bigbr41n/GFTP-client/pkg/ftp"
 )
 
 
@@ -15,21 +16,18 @@ func main() {
         return
 	}
 
-	fmt.Println(os.Args[1], os.Args[2])
-	host := fmt.Sprintf("%s:%s", os.Args[1], os.Args[2]);
+	host := os.Args[1]
+	port := os.Args[2]
 
-	//connect to FTP server
-	conn , err := net.Dial("tcp", host);
-	if err!= nil {
+	//create a new FTP client
+	client := ftp.NewClient(host, port)
+
+    //connect to the FTP server
+    conn, err := client.Dial()
+    if err != nil {
         fmt.Printf("Error connecting to FTP server: %v\n", err)
         return
     }
 
-	//read server response
-	buf := make([]byte, 1024)
-    conn.Read(buf)
-    fmt.Println(string(buf))
-
-    //close connection
-    conn.Close()
+    client.HandleConnection(conn)
 }
