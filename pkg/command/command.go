@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net"
@@ -32,8 +33,50 @@ func NewCommandsHandler(conn net.Conn) FTPhandler {
 
 
 
+
+
+func (ftpc * FTPClient) handleAuth() bool{
+	buffer := make([]byte, 1024)
+
+	for i := 0; i < 2 ; i++ {
+		n, err := ftpc.conn.Read(buffer)
+		if err != nil {
+			fmt.Print("ftp > Error reading input\r\n")
+		}
+		fmt.Print(string(buffer[:n]))
+
+		value, err := ftpc.readInput()
+		if err!= nil {
+            fmt.Print("ftp > 500 Internal server error.\r\n")
+            return false
+        }
+		ftpc.conn.Write([]byte(value))
+
+	}
+	n, err := ftpc.conn.Read(buffer)
+	if err != nil {
+		fmt.Print("ftp > Error reading input\r\n")
+	}
+	if (string(buffer[:n]) == "230 User logged in, proceed.\r\n") {
+		fmt.Print(string(buffer[:n]))
+        return true
+	}
+	return false
+}
+
+
+
 func (ftpc * FTPClient) HandleCommands() {
 
+	defer ftpc.conn.Close()
+
+	//for the first time handle Auth
+	if state := ftpc.handleAuth(); state == false {
+		fmt.Print("ftp > login process failed")
+		return
+	}	
+
+	// Handle commands in a loop
 	buffer := make([]byte, 1024)
 	for {
 			// Read the command from the client
@@ -41,8 +84,9 @@ func (ftpc * FTPClient) HandleCommands() {
 			if err != nil {
 				fmt.Print("ftp > Error reading command.\r\n")
 			}
+			fmt.Print(string(buffer[:n]))
 
-			command, err := ftpc.readInput(fmt.Sprintf("%s ", buffer[:n]))
+			command, err := ftpc.readInput()
 			if err != nil {
 				fmt.Print("ftp > 500 Internal server error.\r\n")
 				return
@@ -55,11 +99,11 @@ func (ftpc * FTPClient) HandleCommands() {
 			case strings.HasPrefix(command, "GET"):
 					ftpc.handleGET(strings.TrimSpace(command[3:]))
 			case strings.HasPrefix(command, "QUIT"):
-					fmt.Print("ftp <> 221 Goodbye.\r\n")
+					fmt.Print("ftp > 221 Goodbye.\r\n")
 					ftpc.conn.Close()
-		return
+					return
 			default:
-					fmt.Print("500 Unknown command.\r\n")
+					ftpc.conn.Write([]byte(command))
 			}
 	}
 }
@@ -186,21 +230,13 @@ func createUniqueFile(filename string) string {
 }
 
 
-func (ftpc * FTPClient) readInput(prompt string) (string, error) {
-	if err := ftpc.writeResponse(prompt); err != nil {
-			return "", err
-	}
-
-	buffer := make([]byte, 1024)
-	n, err := ftpc.conn.Read(buffer)
+// readInput reads a line of input from standard input
+func (ftpc *FTPClient) readInput() (string, error) {
+	reader := bufio.NewReader(os.Stdin) 
+	input, err := reader.ReadString('\n')
 	if err != nil {
-			return "", err
+		return "", err
 	}
 
-	return strings.TrimSpace(string(buffer[:n])), nil
-}
-
-func (ftpc * FTPClient) writeResponse(res string) error {
-	_, err := ftpc.conn.Write([]byte(res))
-	return err
+	return strings.TrimSpace(input), nil
 }
