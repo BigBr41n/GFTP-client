@@ -2,6 +2,7 @@ package command
 
 import (
 	"bufio"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -97,7 +98,7 @@ func (ftpc * FTPClient) HandleCommands() {
             	            fmt.Printf("GFTP> Error reading server response: %v\r\n", err)
             	            return
             	        }
-            	        fmt.Printf("GFTP> %s\r\n", string(buffer[:n]))
+            	        fmt.Printf("GFTP>\n%s\r\n", string(buffer[:n]))
 			}
 	}
 }
@@ -168,13 +169,13 @@ func (ftpc *FTPClient) handleGET(filename string) {
 
 	// Create the directory if it doesn't exist
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
-		fmt.Printf("ftp > Error creating directory: %v\n", err)
+		fmt.Printf("GFTP> Error creating directory: %v\n", err)
 		return
 	}
 
 	// Change to the newly created or existing directory
 	if err := os.Chdir(dirPath); err != nil {
-		fmt.Printf("ftp > Error changing directory: %v\n", err)
+		fmt.Printf("GFTP> Error changing directory: %v\n", err)
 		return
 	}
 
@@ -184,20 +185,39 @@ func (ftpc *FTPClient) handleGET(filename string) {
 	// Create the file
 	file, err := os.Create(finalFilename)
 	if err != nil {
-		fmt.Print("ftp > 451 Requested action aborted: local error in processing.\r\n")
+		fmt.Print("GFTP> 451 Requested action aborted: local error in processing.\r\n")
 		return
 	}
 	defer file.Close()
 
-	fmt.Print("ftp > 150 Opening data connection.\r\n")
+	fmt.Print("GFTP> 150 Opening data connection.\r\n")
 
-	// Copy data from the FTP connection to the file
-	if _, err := io.Copy(file, ftpc.conn); err != nil {
-		fmt.Print("ftp > 426 Transfer failed.\r\n")
+	//send the GET command request to the server
+	_, err = ftpc.conn.Write([]byte(fmt.Sprintf("GET %s\r\n", filename)))
+	if err!= nil {
+        fmt.Print("GFTP> 451 Requested action aborted: local error in processing.\r\n")
+        return
+    }
+	//file size 
+	var size int64
+	// read the size of the file sent from the server 
+	err = binary.Read(ftpc.conn, binary.LittleEndian, &size)
+	if err!= nil {
+        fmt.Print("GFTP> 426 Transfer failed.\r\n")
+        return
+    }
+
+	fmt.Printf("GFTP> File size: %d bytes.\r\n", size)
+	// Copy data from the FTP connection to the file with the size sent from the server
+	var totalRead int64
+	_ , err = io.CopyN(file, ftpc.conn, size-totalRead)
+	if err != nil {
+		fmt.Print("GFTP> 426 Transfer failed.\r\n")
 		return
 	}
 
-	fmt.Print("ftp > 226 Transfer complete.\r\n")
+
+	fmt.Printf("GFTP> 226 Transfer complete. file path : %s/%s \r\n", dirPath,finalFilename)
 }
 
 
