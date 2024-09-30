@@ -22,88 +22,82 @@ type FTPhandler interface {
 	HandleCommands() 
 }
 
-
-
-
+//Factory Function
 func NewCommandsHandler(conn net.Conn) FTPhandler {
 	return &FTPClient{
 			conn:     conn,
 	}
 }
 
+//handle Authentication
+func (ftpc * FTPClient) auth() {
 
+	//buffer to communicate with server for auth
+	buffer := make([]byte,128)
 
-
-
-func (ftpc * FTPClient) handleAuth() bool{
-	buffer := make([]byte, 1024)
-
-	for i := 0; i < 2 ; i++ {
+	for {
 		n, err := ftpc.conn.Read(buffer)
 		if err != nil {
-			fmt.Print("ftp > Error reading input\r\n")
+			fmt.Print("GFTP> Authentication Error: ", err)
+			return
 		}
-		fmt.Print(string(buffer[:n]))
+		msg := string(buffer[:n])
+		fmt.Printf("GFTP> %s", msg)
+		if msg == "230 User logged in, proceed.\r\n" {
+			return 
+		}
+		
+		//read from the Stdin
+		val , err := ftpc.readInput()
+		if err != nil {
+			fmt.Print("GPTP> Error reading input : ", err)
+		}
 
-		value, err := ftpc.readInput()
-		if err!= nil {
-            fmt.Print("ftp > 500 Internal server error.\r\n")
-            return false
-        }
-		ftpc.conn.Write([]byte(value))
+		//send the value to the serve
+		ftpc.conn.Write([]byte(val))
+	}
 
-	}
-	n, err := ftpc.conn.Read(buffer)
-	if err != nil {
-		fmt.Print("ftp > Error reading input\r\n")
-	}
-	if (string(buffer[:n]) == "230 User logged in, proceed.\r\n") {
-		fmt.Print(string(buffer[:n]))
-        return true
-	}
-	return false
 }
-
-
 
 func (ftpc * FTPClient) HandleCommands() {
 
+	//close the connection 
 	defer ftpc.conn.Close()
 
-	//for the first time handle Auth
-	if state := ftpc.handleAuth(); state == false {
-		fmt.Print("ftp > login process failed")
-		return
-	}	
+	//handle Auth
+	ftpc.auth()
 
 	// Handle commands in a loop
-	buffer := make([]byte, 1024)
+	buffer := make([]byte, 2048)
 	for {
-			// Read the command from the client
-			n, err := ftpc.conn.Read(buffer)
-			if err != nil {
-				fmt.Print("ftp > Error reading command.\r\n")
-			}
-			fmt.Print(string(buffer[:n]))
-
+			// Read the command from the client (Stdin)
+			fmt.Print("GFTP> ")
 			command, err := ftpc.readInput()
 			if err != nil {
-				fmt.Print("ftp > 500 Internal server error.\r\n")
+				fmt.Print("GFTP> 500 Internal server error.\r\n")
 				return
 			}
 
 			// Process the command
 			switch {
-			case strings.HasPrefix(command, "PUT"):
-					ftpc.handlePUT(strings.TrimSpace(command[3:]))
-			case strings.HasPrefix(command, "GET"):
-					ftpc.handleGET(strings.TrimSpace(command[3:]))
-			case strings.HasPrefix(command, "QUIT"):
-					fmt.Print("ftp > 221 Goodbye.\r\n")
-					ftpc.conn.Close()
-					return
-			default:
-					ftpc.conn.Write([]byte(command))
+				case strings.HasPrefix(command, "PUT"):
+						ftpc.handlePUT(strings.TrimSpace(command[3:]))
+				case strings.HasPrefix(command, "GET"):
+						ftpc.handleGET(strings.TrimSpace(command[3:]))
+				case strings.HasPrefix(command, "QUIT"):
+						fmt.Print("GFTP> 221 Goodbye.\r\n")
+						ftpc.conn.Close()
+						return
+				default:
+						// "\r\n" used to flush the buffer
+						ftpc.conn.Write([]byte(command + "\r\n"))
+						//read the response from the server and show it to the user
+            	        n, err := ftpc.conn.Read(buffer)
+            	        if err!= nil {
+            	            fmt.Printf("GFTP> Error reading server response: %v\r\n", err)
+            	            return
+            	        }
+            	        fmt.Printf("GFTP> %s\r\n", string(buffer[:n]))
 			}
 	}
 }
