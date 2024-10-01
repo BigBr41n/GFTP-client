@@ -78,7 +78,7 @@ func (ftpc * FTPClient) HandleCommands() {
 				fmt.Print("GFTP> 500 Internal server error.\r\n")
 				return
 			}
-
+			
 			// Process the command
 			switch {
 				case strings.HasPrefix(command, "PUT"):
@@ -107,8 +107,18 @@ func (ftpc * FTPClient) HandleCommands() {
 
 
 
-// PUT uploads a file to the FTP server
 func (ftp *FTPClient) handlePUT(localFilePath string) error {
+	buffer := make([]byte,2048)
+
+	// Get the file size
+	fileInfo, err := os.Stat(localFilePath)
+	if err != nil {
+		return fmt.Errorf("GFTP> error getting file info: %v", err)
+	}
+
+	size := fileInfo.Size()
+	fmt.Printf("GFTP> size of local file: %v bytes\n", size)
+
     // Open the local file for reading
     file, err := os.Open(localFilePath)
     if err != nil {
@@ -119,39 +129,58 @@ func (ftp *FTPClient) handlePUT(localFilePath string) error {
     // Get the filename from the local file path
     filename := filepath.Base(localFilePath)
 
+
     // Send the PUT command to the server
-    _, err = ftp.conn.Write([]byte(fmt.Sprintf("PUT %s\r\n", filename)))
+    _, err = ftp.conn.Write([]byte(fmt.Sprintf("PUT %s\r\n",filename)))
     if err != nil {
         return fmt.Errorf("error sending PUT command: %v", err)
     }
 
-    // Wait for the server's response (optional)
-    buf := make([]byte, 1024)
-    n, err := ftp.conn.Read(buf)
-    if err != nil {
-        return fmt.Errorf("error reading server response: %v", err)
-    }
-    response := string(buf[:n])
-    if response != "Ready to receive file "+filename+"...\r\n" {
-        return fmt.Errorf("unexpected server response: %s", response)
+	// wait the response from the server
+	n , err := ftp.conn.Read(buffer)
+    if err!= nil {
+        fmt.Print("GFTP> Error : ",err);
     }
 
+	//check if the file created in the server
+	if strings.TrimSpace(string(buffer[:n])) != "File Created." {
+		return fmt.Errorf("error creating the file: %v", err)
+	}	
+
+	//send the size of the file
+	err = binary.Write(ftp.conn, binary.LittleEndian, size)
+	if err != nil {
+		return fmt.Errorf("error sending file size: %v", err)
+	}
+
+	// wait the response from the server
+	n, err = ftp.conn.Read(buffer)
+	if err!= nil {
+		fmt.Print("GFTP> Error : ",err);
+	}
+
+	//check 
+	if strings.TrimSpace(string(buffer[:n])) != "Send file" {
+		return fmt.Errorf("error crating the file : %v", err)
+	}
+	
     // Send the file to the server
-    _, err = io.Copy(ftp.conn, file)
+    _, err = io.CopyN(ftp.conn, file, size)
     if err != nil {
         return fmt.Errorf("error sending file: %v", err)
     }
 
-    // Wait for the final response from the server
-    n, err = ftp.conn.Read(buf)
-    if err != nil {
-        return fmt.Errorf("error reading server response: %v", err)
-    }
-    response = string(buf[:n])
-    fmt.Println("Server response:", response)
+	//read the server response 
+	n , err = ftp.conn.Read(buffer)
+	if err != nil {
+		fmt.Print("GFTP> Error : ",err);
+	}
+	fmt.Printf("GFTP> %s\r\n",string(buffer[:n]))
 
     return nil
 }
+
+
 
 
 // handleGET handles the download of a file from the FTP server
@@ -193,7 +222,7 @@ func (ftpc *FTPClient) handleGET(filename string) {
 	fmt.Print("GFTP> 150 Opening data connection.\r\n")
 
 	//send the GET command request to the server
-	_, err = ftpc.conn.Write([]byte(fmt.Sprintf("GET %s\r\n", filename)))
+	_, err = ftpc.conn.Write([]byte(fmt.Sprintf("GET %s\r\n",filename)))
 	if err!= nil {
         fmt.Print("GFTP> 451 Requested action aborted: local error in processing.\r\n")
         return
