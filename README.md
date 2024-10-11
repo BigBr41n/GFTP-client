@@ -12,6 +12,6 @@ This FTP client used only to connect with a custom GFTP server (repo in my accou
 4. RM : remove a file remotely
 5. DRM: delete a directory & its content remotely
 6. MKDIR : create new subdirectory in the current working directory
-7. GET : to pass a file to the client
-8. PUT : to put a file in the server from the client
+7. GET : to get a file from the server
+8. PUT : to put a file in the server
 9. QUIT : quit the server
